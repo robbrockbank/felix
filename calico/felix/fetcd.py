@@ -27,6 +27,7 @@ import logging
 from etcd import (EtcdException, EtcdClusterIdChanged, EtcdKeyNotFound,
                   EtcdEventIndexCleared)
 import etcd
+import gc
 import gevent
 from urllib3 import Timeout
 import urllib3.exceptions
@@ -197,6 +198,10 @@ class EtcdWatcher(Actor):
                 # generation ID allowing us to then start polling for updates
                 # without missing any.
                 self.load_initial_dump()
+                # Loading the initial dump allocates and discards some very
+                # large chunks of memory; trigger a GC to ensure they get
+                # returned to the pool.
+                gc.collect()
                 while True:
                     # Wait for something to change.
                     response = self._wait_for_etcd_event()
