@@ -418,11 +418,13 @@ On each compute node, perform the following steps:
        yum install openstack-neutron
 
    Open ``/etc/neutron/dhcp_agent.ini``. In the ``[DEFAULT]`` section, add
-   the following line (removing any existing ``interface_driver =`` line):
+   the following lines (removing any existing lines for the same settings):
 
    ::
 
            interface_driver = neutron.agent.linux.interface.RoutedInterfaceDriver
+	   enable_metadata_network = False
+	   enable_isolated_metadata = False
 
 6.  Restart and enable the DHCP agent
 

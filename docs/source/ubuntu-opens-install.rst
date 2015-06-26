@@ -318,11 +318,13 @@ perform the following steps:
        sudo apt-get install neutron-common neutron-dhcp-agent nova-api-metadata
 
 5. Open ``/etc/neutron/dhcp_agent.ini`` in your preferred text editor.
-   In the ``[DEFAULT]`` section, add the following line:
+   In the ``[DEFAULT]`` section, add the following lines:
 
    ::
 
        interface_driver = neutron.agent.linux.interface.RoutedInterfaceDriver
+       enable_metadata_network = False
+       enable_isolated_metadata = False
 
    Now restart the DHCP agent:
 
