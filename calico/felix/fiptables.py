@@ -97,7 +97,7 @@ class IptablesUpdater(Actor):
     """
 
     def __init__(self, table, ip_version=4):
-        super(IptablesUpdater, self).__init__(qualifier="v%d" % ip_version)
+        super(IptablesUpdater, self).__init__(qualifier="%s v%d" % (table, ip_version))
         self.table = table
         if ip_version == 4:
             self._restore_cmd = "iptables-restore"
