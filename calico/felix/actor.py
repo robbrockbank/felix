@@ -307,7 +307,6 @@ class Actor(object):
                                             str(msg_uuid),
                                             str(msg_retries[msg_uuid]),
                                             str(msg_dict['recipient']),
-                                            ''
                                             ]))
             _stats.increment("Batches processed")
         if num_splits > 0:
@@ -494,7 +493,6 @@ def actor_message(needs_own_batch=False):
                                             str(caller),
                                             self.name,
                                             method_name,
-                                            ''
                                             ]))
 
                 return fn(self, *args, **kwargs)
@@ -532,7 +530,6 @@ def actor_message(needs_own_batch=False):
                                         '0',
                                         str(caller),
                                         method_name,
-                                        ''
                                         ]))
 
             _log.debug("Message %s sent by %s to %s, queue length %d",
