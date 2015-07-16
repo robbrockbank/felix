@@ -69,7 +69,7 @@ ENDPOINT_KEY_RE = re.compile(
     r'endpoint/(?P<endpoint_id>[^/]+)')
 
 HOST_IP_KEY_RE = re.compile(r'^' + HOST_DIR +
-                            r'/(?P<hostname>[^/]+)/bird_ip')
+                            r'/(?P<hostname>[^/]+)/ipv4_address')
 
 IPAM_V4_CIDR_KEY_RE = re.compile(r'^' + VERSION_DIR +
                                  r'/ipam/v4/pool/(?P<encoded_cidr>[^/]+)')

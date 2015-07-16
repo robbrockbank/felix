@@ -306,7 +306,7 @@ class TestExcdWatcher(BaseTestCase):
         """
         Test set for the IP of a host.
         """
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="10.0.0.1")
         self.m_hosts_ipset.replace_members.assert_called_once_with(
             ["10.0.0.1"],
@@ -318,10 +318,10 @@ class TestExcdWatcher(BaseTestCase):
         Test set for the IP of a host.
         """
         self.m_config.IP_IN_IP_ENABLED = False
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="10.0.0.1")
         self.assertFalse(self.m_hosts_ipset.replace_members.called)
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="delete")
         self.assertFalse(self.m_hosts_ipset.replace_members.called)
 
@@ -329,10 +329,10 @@ class TestExcdWatcher(BaseTestCase):
         """
         Test set for the IP of a host.
         """
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="10.0.0.1")
         self.m_hosts_ipset.reset_mock()
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="delete")
         self.m_hosts_ipset.replace_members.assert_called_once_with(
             [],
@@ -343,10 +343,10 @@ class TestExcdWatcher(BaseTestCase):
         """
         Test set for the IP of a host.
         """
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="10.0.0.1")
         self.m_hosts_ipset.reset_mock()
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="gibberish")
         self.m_hosts_ipset.replace_members.assert_called_once_with(
             [],
@@ -357,7 +357,7 @@ class TestExcdWatcher(BaseTestCase):
         """
         Test set for the IP of a host.
         """
-        self.dispatch("/calico/v1/host/foo/bird_ip",
+        self.dispatch("/calico/v1/host/foo/ipv4_address",
                       action="set", value="10.0.0.1")
         self.m_hosts_ipset.reset_mock()
         self.dispatch("/calico/v1/host/foo",
