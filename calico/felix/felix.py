@@ -34,6 +34,7 @@ import gevent
 
 from calico import common
 from calico.felix import futils
+from calico.felix.actor import MESSAGE_LOG_NAME
 from calico.felix.fiptables import IptablesUpdater
 from calico.felix.dispatch import DispatchChains
 from calico.felix.profilerules import RulesManager
@@ -220,9 +221,9 @@ def main():
     # We enable or disable the logs for message tracking based on the config
     # setting.
     if config.MESSAGE_TRACKING:
-        logging.getLogger("calico.felix.actor.message_log").disabled = False
+        logging.getLogger(MESSAGE_LOG_NAME).disabled = False
     else:
-        logging.getLogger("calico.felix.actor.message_log").disabled = True
+        logging.getLogger(MESSAGE_LOG_NAME).disabled = True
 
     _log.info("Felix initializing")
 
