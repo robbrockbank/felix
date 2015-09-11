@@ -382,10 +382,11 @@ class LocalEndpoint(RefCountedActor):
             ips = set()
             for ip in self.endpoint.get(self.nets_key, []):
                 ips.add(futils.net_to_ip(ip))
-            devices.set_routes(self.ip_type, ips,
-                               self._iface_name,
-                               self.endpoint["mac"],
-                               reset_arp=reset_arp)
+            if not self.config.POLICY_ONLY:
+                devices.set_routes(self.ip_type, ips,
+                                   self._iface_name,
+                                   self.endpoint["mac"],
+                                   reset_arp=reset_arp)
 
         except (IOError, FailedSystemCall):
             if not devices.interface_exists(self._iface_name):
@@ -403,17 +404,18 @@ class LocalEndpoint(RefCountedActor):
         """
         Removes routes from the interface.
         """
-        try:
-            devices.set_routes(self.ip_type, set(), self._iface_name, None)
-        except (IOError, FailedSystemCall):
-            if not devices.interface_exists(self._iface_name):
-                # Deleted under our feet - so the rules are gone.
-                _log.debug("Interface %s for %s deleted",
-                           self._iface_name, self.combined_id)
-            else:
-                # An error deleting the rules. Log and continue.
-                _log.exception("Cannot delete rules for interface %s for %s",
+        if not self.config.POLICY_ONLY:
+            try:
+                devices.set_routes(self.ip_type, set(), self._iface_name, None)
+            except (IOError, FailedSystemCall):
+                if not devices.interface_exists(self._iface_name):
+                    # Deleted under our feet - so the rules are gone.
+                    _log.debug("Interface %s for %s deleted",
                                self._iface_name, self.combined_id)
+                else:
+                    # An error deleting the rules. Log and continue.
+                    _log.exception("Cannot delete rules for interface %s for "
+                                   "%s", self._iface_name, self.combined_id)
 
     def _on_profiles_ready(self):
         # We don't actually need to talk to the profiles, just log.

@@ -196,6 +196,9 @@ class Config(object):
         self.add_parameter("IpInIpMtu",
                            "MTU to set on the IP-in-IP device", 1440,
                            value_is_int=True)
+        self.add_parameter("PolicyOnly",
+                           "Program policy rules with no routing.", False,
+                           value_is_bool=True)
 
         # Read the environment variables, then the configuration file.
         self._read_env_vars()
@@ -246,6 +249,7 @@ class Config(object):
         self.LOGLEVSCR = self.parameters["LogSeverityScreen"].value
         self.IP_IN_IP_ENABLED = self.parameters["IpInIpEnabled"].value
         self.IP_IN_IP_MTU = self.parameters["IpInIpMtu"].value
+        self.POLICY_ONLY = self.parameters["PolicyOnly"].value
 
         self._validate_cfg(final=final)
 
