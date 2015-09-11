@@ -118,7 +118,8 @@ class ConfigParameter(object):
                 try:
                     self.value = int(value)
                 except ValueError:
-                    raise ConfigException("Field was not integer",
+                    raise ConfigException("Field value %s was not a valid "
+                                          "integer" % value,
                                           self)
             elif self.value_is_bool:
                 lower_val = str(value).lower()
@@ -128,7 +129,8 @@ class ConfigParameter(object):
                 elif lower_val in ("false", "0", "no", "n", "f"):
                     self.value = False
                 else:
-                    raise ConfigException("Field was not a valid Boolean",
+                    raise ConfigException("Field value %s was not a valid "
+                                          "Boolean" % value,
                                           self)
             else:
                 # Calling str in principle can throw an exception, but it's
@@ -196,6 +198,12 @@ class Config(object):
         self.add_parameter("IpInIpMtu",
                            "MTU to set on the IP-in-IP device", 1440,
                            value_is_int=True)
+        self.add_parameter("PolicyOnly",
+                           "Program policy rules with no routing.", False,
+                           value_is_bool=True)
+        self.add_parameter("BridgedInterfaces",
+                           "Calico interfaces are connected to a bridge.", False,
+                           value_is_bool=True)
 
         # Read the environment variables, then the configuration file.
         self._read_env_vars()
@@ -246,6 +254,8 @@ class Config(object):
         self.LOGLEVSCR = self.parameters["LogSeverityScreen"].value
         self.IP_IN_IP_ENABLED = self.parameters["IpInIpEnabled"].value
         self.IP_IN_IP_MTU = self.parameters["IpInIpMtu"].value
+        self.POLICY_ONLY = self.parameters["PolicyOnly"].value
+        self.BRIDGED_INTERFACES = self.parameters["BridgedInterfaces"].value
 
         self._validate_cfg(final=final)
 

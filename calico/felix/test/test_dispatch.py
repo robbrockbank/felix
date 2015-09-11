@@ -30,7 +30,10 @@ from calico.felix.dispatch import (
 
 
 # A mocked config object for use with interface_to_suffix.
-Config = collections.namedtuple('Config', ['IFACE_PREFIX', 'METADATA_IP', 'METADATA_PORT'])
+Config = collections.namedtuple('Config', ['IFACE_PREFIX',
+                                           'METADATA_IP',
+                                           'METADATA_PORT',
+                                           'BRIDGED_INTERFACES'])
 
 
 class TestDispatchChains(BaseTestCase):
@@ -40,7 +43,7 @@ class TestDispatchChains(BaseTestCase):
     def setUp(self):
         super(TestDispatchChains, self).setUp()
         self.iptables_updater = mock.MagicMock()
-        self.config = Config('tap', None, 8775)
+        self.config = Config('tap', None, 8775, False)
 
     def getDispatchChain(self):
         return DispatchChains(
@@ -77,7 +80,7 @@ class TestDispatchChains(BaseTestCase):
         """
         Tests that a snapshot with metadata works OK.
         """
-        self.config = Config('tap', '127.0.0.1', 8775)
+        self.config = Config('tap', '127.0.0.1', 8775, False)
         d = self.getDispatchChain()
 
         ifaces = ['tapabcdef', 'tap123456', 'tapb7d849']

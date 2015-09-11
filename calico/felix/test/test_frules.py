@@ -156,6 +156,7 @@ class TestRules(BaseTestCase):
                                                 1234,
                                                 546, 547,
                                                 False,
+                                                False,
                                                 "DROP")
         self.assertEqual(chain, [
             '--append felix-INPUT ! --in-interface tap+ --jump RETURN',
@@ -173,6 +174,7 @@ class TestRules(BaseTestCase):
                                                 "123.0.0.1",
                                                 1234,
                                                 546, 547,
+                                                False,
                                                 False,
                                                 "DROP",
                                                 "felix-hosts")
@@ -193,6 +195,7 @@ class TestRules(BaseTestCase):
                                                 None,
                                                 None,
                                                 546, 547,
+                                                False,
                                                 True,
                                                 "RETURN")
         self.assertEqual(chain, [
@@ -225,6 +228,7 @@ class TestRules(BaseTestCase):
         m_config.METADATA_PORT = 1234
         m_config.DEFAULT_INPUT_CHAIN_ACTION = "RETURN"
         m_config.IFACE_PREFIX = "tap"
+        m_config.BRIDGED_INTERFACES = False
 
         m_v4_upd = Mock(spec=IptablesUpdater)
         m_v6_upd = Mock(spec=IptablesUpdater)

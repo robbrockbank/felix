@@ -79,6 +79,7 @@ class TestBasic(BaseTestCase):
         m_config.IP_IN_IP_ENABLED = True
         m_config.IP_IN_IP_MTU = 1480
         m_config.DEFAULT_INPUT_CHAIN_ACTION = "RETURN"
+        m_config.BRIDGED_INTERFACES = False
         with gevent.Timeout(5):
             self.assertRaises(TestException,
                               felix._main_greenlet, m_config)

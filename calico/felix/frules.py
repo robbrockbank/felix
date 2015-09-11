@@ -198,11 +198,20 @@ def install_global_rules(config, v4_filter_updater, v6_filter_updater,
 
     # Ensure that Calico-controlled IPv6 hosts cannot spoof their IP addresses.
     # (For IPv4, this is controlled by a per-interface sysctl.)
-    v6_raw_updater.ensure_rule_inserted(
-        "PREROUTING --in-interface %s --match rpfilter --invert -j DROP" %
-        iface_match,
-        async=False,
-    )
+    if config.BRIDGED_INTERFACES:
+        v6_raw_updater.ensure_rule_inserted(
+            "PREROUTING --match physdev --physdev-is-bridged --physdev-in %s "
+            "--match rpfilter --invert -j DROP" %
+            iface_match,
+            async=False,
+        )
+    else:
+        v6_raw_updater.ensure_rule_inserted(
+            "PREROUTING --in-interface %s --match rpfilter --invert -j DROP" %
+            iface_match,
+            async=False,
+        )
+
 
     # The IPV4 nat table first. This must have a felix-PREROUTING chain.
     nat_pr = []
@@ -237,6 +246,7 @@ def install_global_rules(config, v4_filter_updater, v6_filter_updater,
                 metadata_port=config.METADATA_PORT,
                 dhcp_src_port=68,
                 dhcp_dst_port=67,
+                bridged_interfaces=config.BRIDGED_INTERFACES,
                 ipv6=False,
                 default_action=config.DEFAULT_INPUT_CHAIN_ACTION,
                 hosts_set_name=hosts_set_name,
@@ -248,11 +258,14 @@ def install_global_rules(config, v4_filter_updater, v6_filter_updater,
                 metadata_port=None,
                 dhcp_src_port=546,
                 dhcp_dst_port=547,
+                bridged_interfaces=config.BRIDGED_INTERFACES,
                 ipv6=True,
                 default_action=config.DEFAULT_INPUT_CHAIN_ACTION,
                 hosts_set_name=hosts_set_name,
             )
-        forward_chain, forward_deps = _build_forward_chain(iface_match)
+        forward_chain, forward_deps = _build_forward_chain(
+                                                     iface_match,
+                                                     config.BRIDGED_INTERFACES)
 
         iptables_updater.rewrite_chains(
             {
@@ -495,8 +508,8 @@ def _rule_to_iptables_fragment(chain_name, rule, ip_version, tag_to_ipset,
 
 
 def _build_input_chain(iface_match, metadata_addr, metadata_port,
-                       dhcp_src_port, dhcp_dst_port, ipv6=False,
-                       default_action="DROP", hosts_set_name=None):
+                       dhcp_src_port, dhcp_dst_port, bridged_interfaces,
+                       ipv6=False, default_action="DROP", hosts_set_name=None):
     """
     Returns a list of rules that should be applied to the felix-INPUT chain.
     :returns Tuple: list of rules and set of deps.
@@ -515,8 +528,16 @@ def _build_input_chain(iface_match, metadata_addr, metadata_port,
 
     # Optimisation: return immediately if the traffic is not from one of the
     # interfaces we're managing.
-    chain.append("--append %s ! --in-interface %s --jump RETURN" %
-                 (CHAIN_INPUT, iface_match,))
+    if bridged_interfaces:
+        chain.append("--append %s --match physdev --physdev-is-bridged "
+                     "! --physdev-in %s --jump RETURN" %
+                     (CHAIN_INPUT, iface_match,))
+        chain.append("--append %s --match physdev ! --physdev-is-bridged "
+                     "--jump RETURN" %
+                     (CHAIN_INPUT,))
+    else:
+        chain.append("--append %s ! --in-interface %s --jump RETURN" %
+                     (CHAIN_INPUT, iface_match,))
     deps = set()
 
     # Allow established connections via the conntrack table.
@@ -589,32 +610,61 @@ def _build_input_chain(iface_match, metadata_addr, metadata_port,
     return chain, deps
 
 
-def _build_forward_chain(iface_match):
+def _build_forward_chain(iface_match, bridged_interfaces):
     """
     Builds a list of rules that should be applied to the felix-FORWARD
     chain.
     :returns Tuple: list of rules and set of deps.
     """
-    forward_chain = [
-        "--append %s --in-interface %s --match conntrack "
-        "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
-        "--append %s --out-interface %s --match conntrack "
-        "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
-        "--append %s --in-interface %s --match conntrack "
-        "--ctstate RELATED,ESTABLISHED --jump RETURN" %
-        (CHAIN_FORWARD, iface_match),
-        "--append %s --out-interface %s --match conntrack "
-        "--ctstate RELATED,ESTABLISHED --jump RETURN" %
-        (CHAIN_FORWARD, iface_match),
-        "--append %s --jump %s --in-interface %s" %
-        (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
-        "--append %s --jump %s --out-interface %s" %
-        (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
-        "--append %s --jump ACCEPT --in-interface %s" %
-        (CHAIN_FORWARD, iface_match),
-        "--append %s --jump ACCEPT --out-interface %s" %
-        (CHAIN_FORWARD, iface_match),
-    ]
+    if bridged_interfaces:
+        forward_chain = [
+            "--append %s --match physdev --physdev-is-bridged "
+            "--physdev-in %s --match conntrack --ctstate INVALID "
+            "--jump DROP" % (CHAIN_FORWARD, iface_match),
+            "--append %s --match physdev --physdev-is-bridged "
+            "--physdev-out %s --match conntrack --ctstate INVALID "
+            "--jump DROP" % (CHAIN_FORWARD, iface_match),
+            "--append %s --match physdev --physdev-is-bridged "
+            "--physdev-in %s --match conntrack --ctstate RELATED,ESTABLISHED "
+            "--jump RETURN" % (CHAIN_FORWARD, iface_match),
+            "--append %s --match physdev --physdev-is-bridged "
+            "--physdev-out %s --match conntrack --ctstate RELATED,ESTABLISHED "
+            "--jump RETURN" % (CHAIN_FORWARD, iface_match),
+            "--append %s --jump %s --match physdev --physdev-is-bridged "
+            "--physdev-in %s" %
+            (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
+            "--append %s --jump %s --match physdev --physdev-is-bridged "
+            "--physdev-out %s" %
+            (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
+            "--append %s --jump ACCEPT --match physdev --physdev-is-bridged "
+            "--physdev-in %s" %
+            (CHAIN_FORWARD, iface_match),
+            "--append %s --jump ACCEPT --match physdev --physdev-is-bridged "
+            "--physdev-out %s" %
+            (CHAIN_FORWARD, iface_match),
+        ]
+    else:
+        forward_chain = [
+            "--append %s --in-interface %s --match conntrack "
+            "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
+            "--append %s --out-interface %s --match conntrack "
+            "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
+            "--append %s --in-interface %s --match conntrack "
+            "--ctstate RELATED,ESTABLISHED --jump RETURN" %
+            (CHAIN_FORWARD, iface_match),
+            "--append %s --out-interface %s --match conntrack "
+            "--ctstate RELATED,ESTABLISHED --jump RETURN" %
+            (CHAIN_FORWARD, iface_match),
+            "--append %s --jump %s --in-interface %s" %
+            (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
+            "--append %s --jump %s --out-interface %s" %
+            (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
+            "--append %s --jump ACCEPT --in-interface %s" %
+            (CHAIN_FORWARD, iface_match),
+            "--append %s --jump ACCEPT --out-interface %s" %
+            (CHAIN_FORWARD, iface_match),
+        ]
+
     return forward_chain, set([CHAIN_FROM_ENDPOINT, CHAIN_TO_ENDPOINT])
 
 
