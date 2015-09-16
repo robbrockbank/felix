@@ -519,16 +519,19 @@ def _build_input_chain(iface_match, metadata_addr, metadata_port,
 
     # Optimisation: return immediately if the traffic is not from one of the
     # interfaces we're managing.
-    chain.append("--append %s %s --jump RETURN" %
-                 (CHAIN_INPUT,
-                  iface_match_in(iface_match, bridged_interfaces),))
-
     # For the bridged interfaces situation, we also need a match on the packet
     # not coming in on a bridged interface.
     if bridged_interfaces:
+        chain.append("--append %s --match physdev --physdev-is-bridged "
+                     "! --physdev-in %s --jump RETURN" %
+                     (CHAIN_INPUT, iface_match,))
         chain.append("--append %s --match physdev ! --physdev-is-in "
                      "--jump RETURN" %
                      (CHAIN_INPUT,))
+    else:
+        chain.append("--append %s ! --in-interface %s --jump RETURN" %
+                     (CHAIN_INPUT, iface_match,))
+
     deps = set()
 
     # Allow established connections via the conntrack table.
@@ -652,7 +655,7 @@ def iface_match_in(ifce_match, bridged_interfaces):
     :return:  The iptables parameters as a string.
     """
     if bridged_interfaces:
-        return "--match physdev --physdev-is-in --physdev-in %s" % ifce_match
+        return "--match physdev --physdev-is-bridged --physdev-in %s" % ifce_match
     else:
         return "--in-interface %s" % ifce_match
 
@@ -665,7 +668,7 @@ def iface_match_out(ifce_match, bridged_interfaces):
     :return:  The iptables parameters as a string.
     """
     if bridged_interfaces:
-        return "--match physdev --physdev-is-out --physdev-out %s" % ifce_match
+        return "--match physdev --physdev-is-bridged --physdev-out %s" % ifce_match
     else:
         return "--out-interface %s" % ifce_match
 
