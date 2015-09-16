@@ -201,12 +201,12 @@ class DispatchChains(Actor):
                 iface_match = self.config.IFACE_PREFIX + prefix + "+"
                 if self.config.BRIDGED_INTERFACES:
                     root_from_upds.append(
-                        "--append %s --match physdev --physdev-is-bridged "
+                        "--append %s --match physdev --physdev-is-in "
                         "--physdev-in %s --goto %s" %
                         (CHAIN_FROM_ENDPOINT, iface_match, disp_from_chain)
                     )
                     root_to_upds.append(
-                        "--append %s --match physdev --physdev-is-bridged "
+                        "--append %s --match physdev --physdev-is-out "
                         "--physdev-out %s --goto %s" %
                         (CHAIN_TO_ENDPOINT, iface_match, disp_to_chain)
                     )
@@ -231,12 +231,12 @@ class DispatchChains(Actor):
                 to_chain_name, from_chain_name = chain_names(ep_suffix)
                 if self.config.BRIDGED_INTERFACES:
                     from_upds.append("--append %s --match physdev "
-                                     "--physdev-is-bridged --physdev-in %s "
+                                     "--physdev-is-in --physdev-in %s "
                                      "--goto %s" %
                                      (disp_from_chain, iface, from_chain_name))
                     from_deps.add(from_chain_name)
                     to_upds.append("--append %s --match physdev "
-                                   "--physdev-is-bridged --physdev-out %s "
+                                   "--physdev-is-out --physdev-out %s "
                                    "--goto %s" %
                                    (disp_to_chain, iface, to_chain_name))
                     to_deps.add(to_chain_name)

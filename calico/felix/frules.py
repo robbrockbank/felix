@@ -200,7 +200,7 @@ def install_global_rules(config, v4_filter_updater, v6_filter_updater,
     # (For IPv4, this is controlled by a per-interface sysctl.)
     if config.BRIDGED_INTERFACES:
         v6_raw_updater.ensure_rule_inserted(
-            "PREROUTING --match physdev --physdev-is-bridged --physdev-in %s "
+            "PREROUTING --match physdev --physdev-is-in --physdev-in %s "
             "--match rpfilter --invert -j DROP" %
             iface_match,
             async=False,
@@ -529,10 +529,10 @@ def _build_input_chain(iface_match, metadata_addr, metadata_port,
     # Optimisation: return immediately if the traffic is not from one of the
     # interfaces we're managing.
     if bridged_interfaces:
-        chain.append("--append %s --match physdev --physdev-is-bridged "
+        chain.append("--append %s --match physdev --physdev-is-in "
                      "! --physdev-in %s --jump RETURN" %
                      (CHAIN_INPUT, iface_match,))
-        chain.append("--append %s --match physdev ! --physdev-is-bridged "
+        chain.append("--append %s --match physdev ! --physdev-is-in "
                      "--jump RETURN" %
                      (CHAIN_INPUT,))
     else:
@@ -618,28 +618,28 @@ def _build_forward_chain(iface_match, bridged_interfaces):
     """
     if bridged_interfaces:
         forward_chain = [
-            "--append %s --match physdev --physdev-is-bridged "
+            "--append %s --match physdev --physdev-is-in "
             "--physdev-in %s --match conntrack --ctstate INVALID "
             "--jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-bridged "
+            "--append %s --match physdev --physdev-is-out"
             "--physdev-out %s --match conntrack --ctstate INVALID "
             "--jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-bridged "
+            "--append %s --match physdev --physdev-is-in "
             "--physdev-in %s --match conntrack --ctstate RELATED,ESTABLISHED "
             "--jump RETURN" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-bridged "
+            "--append %s --match physdev --physdev-is-out "
             "--physdev-out %s --match conntrack --ctstate RELATED,ESTABLISHED "
             "--jump RETURN" % (CHAIN_FORWARD, iface_match),
-            "--append %s --jump %s --match physdev --physdev-is-bridged "
+            "--append %s --jump %s --match physdev --physdev-is-in "
             "--physdev-in %s" %
             (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
-            "--append %s --jump %s --match physdev --physdev-is-bridged "
+            "--append %s --jump %s --match physdev --physdev-is-out "
             "--physdev-out %s" %
             (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
-            "--append %s --jump ACCEPT --match physdev --physdev-is-bridged "
+            "--append %s --jump ACCEPT --match physdev --physdev-is-in "
             "--physdev-in %s" %
             (CHAIN_FORWARD, iface_match),
-            "--append %s --jump ACCEPT --match physdev --physdev-is-bridged "
+            "--append %s --jump ACCEPT --match physdev --physdev-is-out "
             "--physdev-out %s" %
             (CHAIN_FORWARD, iface_match),
         ]
