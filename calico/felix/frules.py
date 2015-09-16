@@ -198,20 +198,11 @@ def install_global_rules(config, v4_filter_updater, v6_filter_updater,
 
     # Ensure that Calico-controlled IPv6 hosts cannot spoof their IP addresses.
     # (For IPv4, this is controlled by a per-interface sysctl.)
-    if config.BRIDGED_INTERFACES:
-        v6_raw_updater.ensure_rule_inserted(
-            "PREROUTING --match physdev --physdev-is-in --physdev-in %s "
-            "--match rpfilter --invert -j DROP" %
-            iface_match,
-            async=False,
-        )
-    else:
-        v6_raw_updater.ensure_rule_inserted(
-            "PREROUTING --in-interface %s --match rpfilter --invert -j DROP" %
-            iface_match,
-            async=False,
-        )
-
+    v6_raw_updater.ensure_rule_inserted(
+        "PREROUTING %s --match rpfilter --invert -j DROP" %
+        iface_match_in(iface_match, config.BRIDGED_INTERFACES),
+        async=False,
+    )
 
     # The IPV4 nat table first. This must have a felix-PREROUTING chain.
     nat_pr = []
@@ -528,16 +519,16 @@ def _build_input_chain(iface_match, metadata_addr, metadata_port,
 
     # Optimisation: return immediately if the traffic is not from one of the
     # interfaces we're managing.
+    chain.append("--append %s %s --jump RETURN" %
+                 (CHAIN_INPUT,
+                  iface_match_in(iface_match, bridged_interfaces),))
+
+    # For the bridged interfaces situation, we also need a match on the packet
+    # not coming in on a bridged interface.
     if bridged_interfaces:
-        chain.append("--append %s --match physdev --physdev-is-in "
-                     "! --physdev-in %s --jump RETURN" %
-                     (CHAIN_INPUT, iface_match,))
         chain.append("--append %s --match physdev ! --physdev-is-in "
                      "--jump RETURN" %
                      (CHAIN_INPUT,))
-    else:
-        chain.append("--append %s ! --in-interface %s --jump RETURN" %
-                     (CHAIN_INPUT, iface_match,))
     deps = set()
 
     # Allow established connections via the conntrack table.
@@ -616,53 +607,25 @@ def _build_forward_chain(iface_match, bridged_interfaces):
     chain.
     :returns Tuple: list of rules and set of deps.
     """
-    if bridged_interfaces:
-        forward_chain = [
-            "--append %s --match physdev --physdev-is-in "
-            "--physdev-in %s --match conntrack --ctstate INVALID "
-            "--jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-out"
-            "--physdev-out %s --match conntrack --ctstate INVALID "
-            "--jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-in "
-            "--physdev-in %s --match conntrack --ctstate RELATED,ESTABLISHED "
-            "--jump RETURN" % (CHAIN_FORWARD, iface_match),
-            "--append %s --match physdev --physdev-is-out "
-            "--physdev-out %s --match conntrack --ctstate RELATED,ESTABLISHED "
-            "--jump RETURN" % (CHAIN_FORWARD, iface_match),
-            "--append %s --jump %s --match physdev --physdev-is-in "
-            "--physdev-in %s" %
-            (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
-            "--append %s --jump %s --match physdev --physdev-is-out "
-            "--physdev-out %s" %
-            (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
-            "--append %s --jump ACCEPT --match physdev --physdev-is-in "
-            "--physdev-in %s" %
-            (CHAIN_FORWARD, iface_match),
-            "--append %s --jump ACCEPT --match physdev --physdev-is-out "
-            "--physdev-out %s" %
-            (CHAIN_FORWARD, iface_match),
-        ]
-    else:
-        forward_chain = [
-            "--append %s --in-interface %s --match conntrack "
-            "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --out-interface %s --match conntrack "
-            "--ctstate INVALID --jump DROP" % (CHAIN_FORWARD, iface_match),
-            "--append %s --in-interface %s --match conntrack "
-            "--ctstate RELATED,ESTABLISHED --jump RETURN" %
-            (CHAIN_FORWARD, iface_match),
-            "--append %s --out-interface %s --match conntrack "
-            "--ctstate RELATED,ESTABLISHED --jump RETURN" %
-            (CHAIN_FORWARD, iface_match),
-            "--append %s --jump %s --in-interface %s" %
-            (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match),
-            "--append %s --jump %s --out-interface %s" %
-            (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match),
-            "--append %s --jump ACCEPT --in-interface %s" %
-            (CHAIN_FORWARD, iface_match),
-            "--append %s --jump ACCEPT --out-interface %s" %
-            (CHAIN_FORWARD, iface_match),
+    iface_match_in_str = iface_match_in(iface_match, bridged_interfaces)
+    iface_match_out_str = iface_match_out(iface_match, bridged_interfaces)
+    forward_chain = [
+        "--append %s %s --match conntrack --ctstate INVALID "
+        "--jump DROP" % (CHAIN_FORWARD, iface_match_in_str),
+        "--append %s %s --match conntrack --ctstate INVALID "
+        "--jump DROP" % (CHAIN_FORWARD, iface_match_out_str),
+        "--append %s %s --match conntrack --ctstate RELATED,ESTABLISHED "
+        "--jump RETURN" % (CHAIN_FORWARD, iface_match_in_str),
+        "--append %s %s --match conntrack --ctstate RELATED,ESTABLISHED "
+        "--jump RETURN" % (CHAIN_FORWARD, iface_match_out_str),
+        "--append %s --jump %s %s" %
+        (CHAIN_FORWARD, CHAIN_FROM_ENDPOINT, iface_match_in_str),
+        "--append %s --jump %s %s" %
+        (CHAIN_FORWARD, CHAIN_TO_ENDPOINT, iface_match_out_str),
+        "--append %s --jump ACCEPT %s" %
+        (CHAIN_FORWARD, iface_match_in_str),
+        "--append %s --jump ACCEPT %s" %
+        (CHAIN_FORWARD, iface_match_out_str),
         ]
 
     return forward_chain, set([CHAIN_FROM_ENDPOINT, CHAIN_TO_ENDPOINT])
@@ -679,6 +642,32 @@ def chain_names(endpoint_suffix):
     to_chain_name = (CHAIN_TO_PREFIX + endpoint_suffix)
     from_chain_name = (CHAIN_FROM_PREFIX + endpoint_suffix)
     return to_chain_name, from_chain_name
+
+
+def iface_match_in(ifce_match, bridged_interfaces):
+    """
+    Return the iptables parameters used for matching an in-interface.
+    :param ifce_match:  The interface name match
+    :param bridged_interfaces:  Whether Felix is using bridged interfaces
+    :return:  The iptables parameters as a string.
+    """
+    if bridged_interfaces:
+        return "--match physdev --physdev-is-in --physdev-in %s" % ifce_match
+    else:
+        return "--in-interface %s" % ifce_match
+
+
+def iface_match_out(ifce_match, bridged_interfaces):
+    """
+    Return the iptables parameters used for matching an out-interface.
+    :param ifce_match:  The interface name match
+    :param bridged_interfaces:  Whether Felix is using bridged interfaces
+    :return:  The iptables parameters as a string.
+    """
+    if bridged_interfaces:
+        return "--match physdev --physdev-is-out --physdev-out %s" % ifce_match
+    else:
+        return "--out-interface %s" % ifce_match
 
 
 class UnsupportedICMPType(Exception):

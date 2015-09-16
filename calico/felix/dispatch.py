@@ -24,7 +24,7 @@ import logging
 from calico.felix.actor import Actor, actor_message, wait_and_check
 from calico.felix.frules import (
     CHAIN_TO_ENDPOINT, CHAIN_FROM_ENDPOINT, CHAIN_FROM_LEAF, CHAIN_TO_LEAF,
-    chain_names, interface_to_suffix
+    chain_names, interface_to_suffix, iface_match_in, iface_match_out
 )
 
 _log = logging.getLogger(__name__)
@@ -199,26 +199,20 @@ class DispatchChains(Actor):
                 root_to_deps.add(disp_from_chain)
                 # Point root chain at prefix chain.
                 iface_match = self.config.IFACE_PREFIX + prefix + "+"
-                if self.config.BRIDGED_INTERFACES:
-                    root_from_upds.append(
-                        "--append %s --match physdev --physdev-is-in "
-                        "--physdev-in %s --goto %s" %
-                        (CHAIN_FROM_ENDPOINT, iface_match, disp_from_chain)
-                    )
-                    root_to_upds.append(
-                        "--append %s --match physdev --physdev-is-out "
-                        "--physdev-out %s --goto %s" %
-                        (CHAIN_TO_ENDPOINT, iface_match, disp_to_chain)
-                    )
-                else:
-                    root_from_upds.append(
-                        "--append %s --in-interface %s --goto %s" %
-                        (CHAIN_FROM_ENDPOINT, iface_match, disp_from_chain)
-                    )
-                    root_to_upds.append(
-                        "--append %s --out-interface %s --goto %s" %
-                        (CHAIN_TO_ENDPOINT, iface_match, disp_to_chain)
-                    )
+                root_from_upds.append(
+                    "--append %s %s --goto %s" %
+                    (CHAIN_FROM_ENDPOINT,
+                     iface_match_in(iface_match,
+                                    self.config.BRIDGED_INTERFACES),
+                     disp_from_chain)
+                )
+                root_to_upds.append(
+                    "--append %s %s --goto %s" %
+                    (CHAIN_TO_ENDPOINT,
+                     iface_match_out(iface_match,
+                                     self.config.BRIDGED_INTERFACES),
+                     disp_to_chain)
+                )
 
             # Common processing, add the per-endpoint rules to whichever
             # chain we decided above.
@@ -229,26 +223,18 @@ class DispatchChains(Actor):
                 # rather than to this chain.
                 ep_suffix = interface_to_suffix(self.config, iface)
                 to_chain_name, from_chain_name = chain_names(ep_suffix)
-                if self.config.BRIDGED_INTERFACES:
-                    from_upds.append("--append %s --match physdev "
-                                     "--physdev-is-in --physdev-in %s "
-                                     "--goto %s" %
-                                     (disp_from_chain, iface, from_chain_name))
-                    from_deps.add(from_chain_name)
-                    to_upds.append("--append %s --match physdev "
-                                   "--physdev-is-out --physdev-out %s "
-                                   "--goto %s" %
-                                   (disp_to_chain, iface, to_chain_name))
-                    to_deps.add(to_chain_name)
-                else:
-                    from_upds.append("--append %s --in-interface %s "
-                                     "--goto %s" %
-                                     (disp_from_chain, iface, from_chain_name))
-                    from_deps.add(from_chain_name)
-                    to_upds.append("--append %s --out-interface %s "
-                                   "--goto %s" %
-                                   (disp_to_chain, iface, to_chain_name))
-                    to_deps.add(to_chain_name)
+                from_upds.append("--append %s %s --goto %s" %
+                    (disp_from_chain,
+                     iface_match_in(iface,
+                                    self.config.BRIDGED_INTERFACES),
+                     from_chain_name))
+                from_deps.add(from_chain_name)
+                to_upds.append("--append %s %s --goto %s" %
+                    (disp_to_chain,
+                     iface_match_out(iface,
+                                     self.config.BRIDGED_INTERFACES),
+                     to_chain_name))
+                to_deps.add(to_chain_name)
 
             if not use_root_chain:
                 # Add a default drop to the end of the leaf chain.
