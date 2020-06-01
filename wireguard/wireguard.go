@@ -1461,22 +1461,29 @@ func (w *Wireguard) ensureLinkAddressV4(netlinkClient netlinkshim.Netlink) error
 
 // updateRouteRulesFromNodeUpdates updates the routerules from the node updates.
 func (w *Wireguard) updateRouteRulesFromNodeUpdates() {
-	// We need to add route rules for each local CIDR.
-	nodeUpdate, ok := w.nodeUpdates[w.hostname]
-	if !ok {
-		return
-	}
+	rule := routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
+		GoToTable(w.config.RoutingTableIndex).
+		MatchFWMarkWithMask(0, uint32(w.config.FirewallMark))
+	w.routerule.SetRule(rule)
 
-	nodeUpdate.cidrsDeleted.Iter(func(item interface{}) error {
-		cidr := item.(ip.CIDR)
-		w.routerule.RemoveRule(w.createRouteRule(cidr))
-		return nil
-	})
-	nodeUpdate.cidrsAdded.Iter(func(item interface{}) error {
-		cidr := item.(ip.CIDR)
-		w.routerule.SetRule(w.createRouteRule(cidr))
-		return nil
-	})
+	/*
+		// We need to add route rules for each local CIDR.
+		nodeUpdate, ok := w.nodeUpdates[w.hostname]
+		if !ok {
+			return
+		}
+
+		nodeUpdate.cidrsDeleted.Iter(func(item interface{}) error {
+			cidr := item.(ip.CIDR)
+			w.routerule.RemoveRule(w.createRouteRule(cidr))
+			return nil
+		})
+		nodeUpdate.cidrsAdded.Iter(func(item interface{}) error {
+			cidr := item.(ip.CIDR)
+			w.routerule.SetRule(w.createRouteRule(cidr))
+			return nil
+		})
+	*/
 }
 
 // createRouteRule creates a routing rule to route a local source CIDR to the wireguard table (if wireguard firewall

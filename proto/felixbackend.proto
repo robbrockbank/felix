@@ -426,6 +426,10 @@ message WorkloadEndpointStatusRemove {
 message WireguardStatusUpdate {
   // Wireguard public-key set on the interface.
   string public_key = 1;
+
+  // Wireguard status and reason.
+  WireguardStatus status = 2;
+  string reason = 3;
 }
 
 message HostMetadataUpdate {
@@ -494,6 +498,13 @@ enum IPPoolType {
   NO_ENCAP = 1;
   VXLAN = 2;
   IPIP = 3;
+}
+
+enum WireguardStatus {
+  UNKNOWN = 0;
+  ENABLED = 1;
+  DISABLED = 2;
+  ERROR_NOT_SUPPORTED = 3;
 }
 
 message RouteUpdate {
