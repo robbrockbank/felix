@@ -62,6 +62,7 @@ import (
 	client "github.com/projectcalico/libcalico-go/lib/clientv3"
 	cerrors "github.com/projectcalico/libcalico-go/lib/errors"
 	"github.com/projectcalico/libcalico-go/lib/health"
+	logsettings "github.com/projectcalico/libcalico-go/lib/logsettings"
 	lclogutils "github.com/projectcalico/libcalico-go/lib/logutils"
 	"github.com/projectcalico/libcalico-go/lib/options"
 	"github.com/projectcalico/libcalico-go/lib/set"
@@ -83,6 +84,33 @@ const (
 	// by SIGHUP, which means that the wrapper script also restarts Felix on a SIGHUP.
 	configChangedRC = 129
 )
+
+func DebuggingConfigurationHandler(logLevel apiv3.LogLevel, configParams interface{}) {
+	log.Infof("Detected a default DebuggingConfiguration change. Processing it.", logLevel)
+
+	// Currently log severity in DebuggingConfiguration can only be set to Info or Debug.
+	// Setting it to Info or not setting at all means fall back to other mechanism.
+	// Setting it to Debug has priority over anything else.
+	if logLevel == apiv3.LogLevelDebug {
+		log.Info("Set log severity to Debug")
+		if err := os.Setenv(logutils.DEBUGGING_CONFIGURATION_LOG_LEVEL, "DEBUG"); err != nil {
+			log.Info("failed to set environment variable ", err)
+		}
+		log.SetLevel(log.DebugLevel)
+		if cp, ok := configParams.(*config.Config); ok {
+			log.Info("Set log severity based on ConfigureLogging")
+			logutils.ConfigureLogging(cp)
+		}
+	} else {
+		os.Unsetenv(logutils.DEBUGGING_CONFIGURATION_LOG_LEVEL)
+		if cp, ok := configParams.(*config.Config); ok {
+			log.Info("Set log severity based on ConfigureLogging")
+			logutils.ConfigureLogging(cp)
+		} else {
+			log.Warn("failed to get configParams")
+		}
+	}
+}
 
 // Run is the entry point to run a Felix instance.
 //
@@ -224,6 +252,7 @@ configRetry:
 			continue configRetry
 		}
 		log.Info("Created datastore client")
+
 		numClientsCreated++
 		backendClient = v3Client.(interface{ Backend() bapi.Client }).Backend()
 		for {
@@ -259,6 +288,9 @@ configRetry:
 			time.Sleep(1 * time.Second)
 			continue configRetry
 		}
+
+		logsettings.RegisterForLogSettings(ctx, v3Client, apiv3.ComponentCalicoNode, configParams.FelixHostname,
+			DebuggingConfigurationHandler, configParams)
 
 		// We now have some config flags that affect how we configure the syncer.
 		// After loading the config from the datastore, reconnect, possibly with new

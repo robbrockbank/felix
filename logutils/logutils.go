@@ -42,7 +42,13 @@ func init() {
 	)
 }
 
-const logQueueSize = 100
+const (
+	logQueueSize = 100
+)
+
+const (
+	DEBUGGING_CONFIGURATION_LOG_LEVEL = "FELIX_DEBUGGING_CONFIGURATION_LOG_LEVEL"
+)
 
 // ConfigureEarlyLogging installs our logging adapters, and enables early logging to screen
 // if it is enabled by either the FELIX_EARLYLOGSEVERITYSCREEN or FELIX_LOGSEVERITYSCREEN
@@ -86,8 +92,14 @@ func ConfigureEarlyLogging() {
 // configuration.  It creates hooks for the relevant logging targets and
 // attaches them to logrus.
 func ConfigureLogging(configParams *config.Config) {
+	var logLevelScreen log.Level
+	if dc := os.Getenv(DEBUGGING_CONFIGURATION_LOG_LEVEL); dc != "" {
+		logLevelScreen = log.DebugLevel
+	} else {
+		logLevelScreen = logutils.SafeParseLogLevel(configParams.LogSeverityScreen)
+	}
+
 	// Parse the log levels, defaulting to panic if in doubt.
-	logLevelScreen := logutils.SafeParseLogLevel(configParams.LogSeverityScreen)
 	logLevelFile := logutils.SafeParseLogLevel(configParams.LogSeverityFile)
 	logLevelSyslog := logutils.SafeParseLogLevel(configParams.LogSeveritySys)
 
