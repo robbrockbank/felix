@@ -154,7 +154,6 @@ type Wireguard struct {
 	cidrToNodeName map[ip.CIDR]string
 
 	// Wireguard routing tables and rule managers
-	nodeRouteTable     *routetable.RouteTable
 	workloadRouteTable *routetable.RouteTable
 	routerule          *routerule.RouteRules
 
@@ -273,7 +272,6 @@ func (w *Wireguard) OnIfaceStateChanged(ifaceName string, state ifacemonitor.Sta
 
 	// Notify the wireguard route tables.
 	w.workloadRouteTable.OnIfaceStateChanged(ifaceName, state)
-	w.nodeRouteTable.OnIfaceStateChanged(ifaceName, state)
 }
 
 func (w *Wireguard) EndpointUpdate(name string, ipv4Addr ip.Addr) {
@@ -566,7 +564,6 @@ func (w *Wireguard) QueueResync() {
 
 	// Flag the routetables for resync.
 	w.workloadRouteTable.QueueResync()
-	w.nodeRouteTable.QueueResync()
 
 	// Flag the routerule for resync.
 	if w.routerule != nil {
@@ -720,9 +717,7 @@ func (w *Wireguard) Apply() (err error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if errRoutes = w.workloadRouteTable.Apply(); errRoutes == nil {
-			errRoutes = w.nodeRouteTable.Apply()
-		}
+		errRoutes = w.workloadRouteTable.Apply()
 	}()
 
 	// Apply wireguard configuration.
@@ -918,12 +913,6 @@ func (w *Wireguard) handlePeerAndRouteDeletionFromNodeUpdates(conflictingKeys se
 				logCxt.WithField("cidr", cidr).Debug("Deleting workload route")
 				return nil
 			})
-
-			if node.ipv4EndpointAddr != nil {
-				cidr := node.ipv4EndpointAddr.AsCIDR()
-				logCxt.WithField("cidr", cidr).Debug("Deleting node route")
-				w.nodeRouteTable.RouteRemove(w.config.InterfaceName, cidr)
-			}
 		} else if update.publicKey == nil || *update.publicKey == node.publicKey {
 			// It's not a delete, and the public key hasn't changed so no key deletion processing required.
 			logCxt.Debug("Node updated, but public key is the same - no wireguard peer deletion required")
@@ -1050,13 +1039,6 @@ func (w *Wireguard) updateRouteTableFromNodeUpdates() {
 			w.workloadRouteTable.RouteRemove(ifaceName, cidr)
 			return nil
 		})
-
-		if update.ipv4EndpointAddrDeleted != nil {
-			// Endpoint address has been deleted, so remove route from the node route table.
-			cidr := update.ipv4EndpointAddrDeleted.AsCIDR()
-			logCxt.WithField("cidr", cidr).Debug("Removing CIDR from nodeRouteTable interface")
-			w.nodeRouteTable.RouteRemove(ifaceName, cidr)
-		}
 	}
 
 	// Now do the adds or updates. The route table component will take care of routes that don't actually change and
@@ -1114,27 +1096,6 @@ func (w *Wireguard) updateRouteTableFromNodeUpdates() {
 			})
 			return nil
 		})
-
-		if update.ipv4EndpointAddrAdded != nil {
-			// The endpoint IP address has been added, so add the route to the node route table.
-			cidr := update.ipv4EndpointAddrAdded.AsCIDR()
-			logCxt.WithField("cidr", cidr).Debug("New endpoint address")
-			w.nodeRouteTable.RouteUpdate(ifaceName, routetable.Target{
-				Type: targetType,
-				CIDR: cidr,
-			})
-		} else if wireguardSettingChanged && node.ipv4EndpointAddr != nil {
-			// The wireguard setting for this node has changed, and there is an endpoint address. The route for this
-			// node needs to change, so remove the existing route on the old interface and add the route to the new
-			// interface.
-			cidr := node.ipv4EndpointAddr.AsCIDR()
-			logCxt.WithField("cidr", cidr).Debug("Change endpoint route")
-			w.nodeRouteTable.RouteRemove(deleteIfaceName, cidr)
-			w.nodeRouteTable.RouteUpdate(ifaceName, routetable.Target{
-				Type: targetType,
-				CIDR: cidr,
-			})
-		}
 
 		node.routingToWireguard = shouldRouteToWireguard
 	}
