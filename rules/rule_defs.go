@@ -53,7 +53,6 @@ const (
 	ChainNATOutgoing    = ChainNamePrefix + "nat-outgoing"
 
 	ChainManglePrerouting  = ChainNamePrefix + "PREROUTING"
-	ChainMangleOutput      = ChainNamePrefix + "OUTPUT"
 	ChainManglePostrouting = ChainNamePrefix + "POSTROUTING"
 
 	IPSetIDNATOutgoingAllPools  = "all-ipam-pools"
@@ -280,10 +279,8 @@ type Config struct {
 	AllowVXLANPacketsFromWorkloads bool
 	AllowIPIPPacketsFromWorkloads  bool
 
-	WireguardEnabled                    bool
-	WireguardInterfaceName              string
-	WireguardMarkDoNotRouteViaWireguard int
-	WireguardMarkNonCaliWorkloadIface   int
+	WireguardEnabled       bool
+	WireguardInterfaceName string
 
 	IptablesLogPrefix         string
 	EndpointToHostAction      string

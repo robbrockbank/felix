@@ -216,26 +216,11 @@ func NewWithShims(
 		config.WorkloadRoutingTableIndex,
 		opRecorder,
 	)
-	nrt := routetable.NewWithShims(
-		[]string{"^" + config.InterfaceName + "$", routetable.InterfaceNone},
-		ipVersion,
-		newRoutetableNetlink,
-		false, // vxlan
-		netlinkTimeout,
-		func(cidr ip.CIDR, destMAC net.HardwareAddr, ifaceName string) error { return nil }, // addStaticARPEntry
-		&noOpConnTrack{},
-		timeShim,
-		nil, //deviceRouteSourceAddress
-		deviceRouteProtocol,
-		true, //removeExternalRoutes
-		config.NodeRoutingTableIndex,
-		opRecorder,
-	)
 	// Create routerule.
 	rr, err := routerule.New(
 		ipVersion,
 		config.RoutingRulePriority,
-		set.From(config.WorkloadRoutingTableIndex, config.NodeRoutingTableIndex),
+		set.From(config.WorkloadRoutingTableIndex),
 		routerule.RulesMatchSrcFWMarkTable,
 		routerule.RulesMatchSrcFWMarkTable,
 		netlinkTimeout,
@@ -260,7 +245,6 @@ func NewWithShims(
 		publicKeyToNodeNames: map[wgtypes.Key]set.Set{},
 		nodeUpdates:          map[string]*nodeUpdateData{},
 		workloadRouteTable:   wrt,
-		nodeRouteTable:       nrt,
 		routerule:            rr,
 		statusCallback:       statusCallback,
 		localIPs:             set.New(),
@@ -1156,50 +1140,48 @@ func (w *Wireguard) updateRouteTableFromNodeUpdates() {
 	}
 }
 
-// addStaticRouteRules adds the static route rules used for routing to wg-enabled workloads, or for routing to nodes
-// when request originated over wireguard.
+// addStaticRouteRules adds the static route rules used for routing to wg-enabled workloads.
 func (w *Wireguard) addStaticRouteRules() {
-	// All routes that may use wireguard will attempt to route using the destination-workload table.
-	w.routerule.SetRule(routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
-		GoToTable(w.config.WorkloadRoutingTableIndex).
-		MatchFWMarkWithMask(0, uint32(w.config.MarkDoNotRouteViaWireguard)))
-
-	// For externally originated packets that need to be forced over wireguard, route using the destination-node table.
-	// Arguably these could be routed via a separate "force" over wireguard table, but since the wireguard table needs
-	// to explicitly handle node and worload CIDRs there is no point in having a separate table to maintain.
-	w.routerule.SetRule(routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
-		GoToTable(w.config.NodeRoutingTableIndex).
-		MatchFWMarkWithMask(uint32(w.config.MarkNonCaliWorkloadIface),
-			uint32(w.config.MarkDoNotRouteViaWireguard+w.config.MarkNonCaliWorkloadIface)))
+	// If the route source is Calico IP Pools then we add a single static rule to route to wireguard-enabled pods.
+	if w.config.RouteSource == "WorkloadIPs" {
+		// All routes that may use wireguard will attempt to route using the destination-workload table.
+		w.routerule.SetRule(routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
+			GoToTable(w.config.WorkloadRoutingTableIndex).
+			MatchFWMarkWithMask(0, uint32(w.config.MarkDoNotRouteViaWireguard)))
+	}
 }
 
 // updateRouteRulesFromNodeUpdates updates the routerules from the node updates.
 func (w *Wireguard) updateRouteRulesFromNodeUpdates() {
-	// We need to add route rules for each local CIDR. Grab the updates for this local node.
-	nodeUpdate, ok := w.nodeUpdates[w.hostname]
-	if !ok {
-		return
-	}
+	// If the route source is not Calico IP Pools then we limit wireguard encryption to be only between pods. We
+	// use source based routes to handle the source, destination is handled by the wireguard route table.
+	if w.config.RouteSource != "WorkloadIPs" {
+		// Add route rules for each local CIDR. Grab the updates for this local node.
+		nodeUpdate, ok := w.nodeUpdates[w.hostname]
+		if !ok {
+			return
+		}
 
-	// Add source based routes for local workloads that route to the node routing table. This table contains entries
-	// for wireguard enabled nodes to ensure we use wireguard for pod to node traffic.
-	nodeUpdate.cidrsDeleted.Iter(func(item interface{}) error {
-		cidr := item.(ip.CIDR)
-		w.routerule.RemoveRule(w.createLocalWorkloadRouteRule(cidr))
-		return nil
-	})
-	nodeUpdate.cidrsAdded.Iter(func(item interface{}) error {
-		cidr := item.(ip.CIDR)
-		w.routerule.SetRule(w.createLocalWorkloadRouteRule(cidr))
-		return nil
-	})
+		// Add source based routes for local workloads that route to the node routing table. This table contains entries
+		// for wireguard enabled nodes to ensure we use wireguard for pod to node traffic.
+		nodeUpdate.cidrsDeleted.Iter(func(item interface{}) error {
+			cidr := item.(ip.CIDR)
+			w.routerule.RemoveRule(w.createLocalWorkloadRouteRule(cidr))
+			return nil
+		})
+		nodeUpdate.cidrsAdded.Iter(func(item interface{}) error {
+			cidr := item.(ip.CIDR)
+			w.routerule.SetRule(w.createLocalWorkloadRouteRule(cidr))
+			return nil
+		})
+	}
 }
 
 // createLocalWorkloadRouteRule creates a routing rule to route a local source CIDR to the wireguard table matching
 // on remote wireguard accessible nodes.
 func (w *Wireguard) createLocalWorkloadRouteRule(cidr ip.CIDR) *routerule.Rule {
 	rule := routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
-		GoToTable(w.config.NodeRoutingTableIndex).
+		GoToTable(w.config.WorkloadRoutingTableIndex).
 		MatchFWMarkWithMask(0, uint32(w.config.MarkDoNotRouteViaWireguard)).
 		MatchSrcAddress(cidr.ToIPNet())
 	return rule
@@ -1636,16 +1618,6 @@ func (w *Wireguard) ensureDisabled(netlinkClient netlinkshim.Interface) error {
 			// The workloadRouteTable configuration will be empty since we will not send updates, so applying this will remove the
 			// old routes if so configured.
 			errWorkloadRoutes = w.workloadRouteTable.Apply()
-		}()
-	}
-	if w.config.NodeRoutingTableIndex > 0 {
-		// Only attempt automatic cleanup of the routing table if it is not the default table.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// The workloadRouteTable configuration will be empty since we will not send updates, so applying this will remove the
-			// old routes if so configured.
-			errNodeRoutes = w.nodeRouteTable.Apply()
 		}()
 	}
 	wg.Wait()
