@@ -1104,7 +1104,7 @@ func (w *Wireguard) updateRouteTableFromNodeUpdates() {
 // addStaticRouteRules adds the static route rules used for routing to wg-enabled workloads.
 func (w *Wireguard) addStaticRouteRules() {
 	// If the route source is Calico IP Pools then we add a single static rule to route to wireguard-enabled pods.
-	if w.config.RouteSource == "WorkloadIPs" {
+	if w.config.RouteSource != "WorkloadIPs" {
 		// All routes that may use wireguard will attempt to route using the destination-workload table.
 		w.routerule.SetRule(routerule.NewRule(ipVersion, w.config.RoutingRulePriority).
 			GoToTable(w.config.WorkloadRoutingTableIndex).
@@ -1116,7 +1116,7 @@ func (w *Wireguard) addStaticRouteRules() {
 func (w *Wireguard) updateRouteRulesFromNodeUpdates() {
 	// If the route source is not Calico IP Pools then we limit wireguard encryption to be only between pods. We
 	// use source based routes to handle the source, destination is handled by the wireguard route table.
-	if w.config.RouteSource != "WorkloadIPs" {
+	if w.config.RouteSource == "WorkloadIPs" {
 		// Add route rules for each local CIDR. Grab the updates for this local node.
 		nodeUpdate, ok := w.nodeUpdates[w.hostname]
 		if !ok {
